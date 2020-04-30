@@ -14,7 +14,7 @@ from certbot import interfaces
 from certbot.plugins import dns_common
 from dns.exception import DNSException
 
-from .dns import dns_challenge_server_ips
+from .dnsutils import dns_challenge_server_ips
 
 netfilter_support = True
 try:
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 NETFILTER_MAX_QUEUES = 64
 
 
-class ProcolAgnosticNfqueue:
+class ProcolAgnosticNfqueue(object):
     def __init__(self, version):
         self.nfqueue = NetfilterQueue()
         self.queue_num = None
@@ -84,7 +84,7 @@ class ProcolAgnosticNfqueue:
             self._modify_rule(True)
 
 
-class DNSAuthenticator:
+class DNSAuthenticator(object):
     def __init__(self, validation_name, validation):
         self.validation_name = validation_name
         self.validation = validation
@@ -120,7 +120,7 @@ class DNSAuthenticator:
 
 class NetfilterAuthenticator(DNSAuthenticator):
     def __init__(self, validation_name, validation):
-        super().__init__(validation_name, validation)
+        super(NetfilterAuthenticator, self).__init__(validation_name, validation)
         self.nfqueue4 = ProcolAgnosticNfqueue(4)
         self.nfqueue6 = ProcolAgnosticNfqueue(6)
 
@@ -136,7 +136,7 @@ class NetfilterAuthenticator(DNSAuthenticator):
         s.sendto(bytes(ip_layer(src=src_addr, dst=dst_addr) / UDP(sport=src_port, dport=dst_port) / payload), dst)
 
     def cleanup(self):
-        super().cleanup()
+        super(NetfilterAuthenticator, self).cleanup()
         try:
             self.nfqueue4.delete_rule()
         except iptc.IPTCError:
@@ -183,7 +183,7 @@ class NetfilterAuthenticator(DNSAuthenticator):
 
 class ServerAuthenticator(DNSAuthenticator):
     def __init__(self, validation_name, validation, ips):
-        super().__init__(validation_name, validation)
+        super(ServerAuthenticator, self).__init__(validation_name, validation)
         self.ips = ips
         self.sockets = []
 
@@ -212,7 +212,7 @@ class ServerAuthenticator(DNSAuthenticator):
             self.children.append(pid)
 
     def cleanup(self):
-        super().cleanup()
+        super(ServerAuthenticator, self).cleanup()
         for s in self.sockets:
             s.close()
         self.sockets = []
@@ -221,17 +221,17 @@ class ServerAuthenticator(DNSAuthenticator):
 @zope.interface.implementer(interfaces.IAuthenticator)
 @zope.interface.provider(interfaces.IPluginFactory)
 class CertbotDNSAuthenticator(dns_common.DNSAuthenticator):
-    description = 'Obtain certificates using a DNS TXT record (by configuring the NS record of _acme-challenge' \
-                  'to point to the server which is running certbot)'
+    description = 'Obtain certificates using a DNS TXT record (by configuring the NS record of ' \
+                  '_acme-challenge.yourdomain.com to point to the server which is running certbot)'
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(CertbotDNSAuthenticator, self).__init__(*args, **kwargs)
         self.credentials = None
         self.authenticator = None
 
     @classmethod
     def add_parser_arguments(cls, add, default_propagation_seconds=0):
-        super().add_parser_arguments(add, default_propagation_seconds=default_propagation_seconds)
+        super(CertbotDNSAuthenticator, cls).add_parser_arguments(add, default_propagation_seconds=default_propagation_seconds)
 
     def _setup_credentials(self):
         pass

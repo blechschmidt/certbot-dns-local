@@ -22,9 +22,9 @@ challenges (dns-01) for domains managed by any registrar.
       ```
       pip install certbot-dns-local
       ```
-   * If you are using `cerbot-auto`, clone the repository, `cd` into the folder and run:
+   * If you are using `certbot-auto`, clone the repository, `cd` into the folder and run:
       ```
-      /opt/eff.org/certbot/venv/bin/pip install .
+      /opt/eff.org/certbot/venv/bin/pip install certbot-dns-local
      ```
 
 3. Set up a DNS `NS` record for `_acme-challenge.yourdomain.com` pointing to the server which certbot is running on.\

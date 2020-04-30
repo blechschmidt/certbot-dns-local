@@ -22,7 +22,7 @@ with open('README.md', 'r') as fh:
 
 setup(
     name='certbot-dns-local',
-    version='0.1.0',
+    version='0.1.1',
     description='Domain registrar agnostic authenticator plugin for certbot',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -38,6 +38,7 @@ setup(
         ]
     },
     classifiers=[
+        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License',
         'Intended Audience :: System Administrators',
