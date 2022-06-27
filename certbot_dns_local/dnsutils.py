@@ -52,8 +52,11 @@ def dns_challenge_server_ips(domain):
             pass
         ns_domain = '.'.join(ns_domain.split('.')[1:])  # Drop the first label
 
-    # These IP addresses are then used in order to find the NS record for the _acme-challenge subdomain.
-    chal_ns = dns_get_all('_acme-challenge.' + domain, 'NS', ns_ips, True)
+    try:
+        # These IP addresses are then used in order to find the NS record for the _acme-challenge subdomain.
+        chal_ns = dns_get_all('_acme-challenge.' + domain, 'NS', ns_ips, True)
 
-    # Resolve the IP addresses of the server which is supposed to answer the DNS challenges.
-    return dns_resolve_ips(chal_ns)
+        # Resolve the IP addresses of the server which is supposed to answer the DNS challenges.
+        return dns_resolve_ips(chal_ns)
+    except dns.resolver.NXDOMAIN:
+        return []
