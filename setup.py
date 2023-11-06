@@ -22,7 +22,7 @@ with open('README.md', 'r') as fh:
 
 setup(
     name='certbot-dns-local',
-    version='0.1.1',
+    version='0.1.2',
     description='Domain registrar agnostic authenticator plugin for certbot',
     long_description=long_description,
     long_description_content_type='text/markdown',
