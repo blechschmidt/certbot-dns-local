@@ -15,7 +15,8 @@ def dns_get_all(qname, qtype, nameservers=None, authority=False):
     section = response.response.answer if not authority else response.response.authority
     for answer in section:
         for value in answer:
-            result.append(str(value))
+            if value.rdtype.name == qtype:
+                result.append(str(value))
     return result
 
 
