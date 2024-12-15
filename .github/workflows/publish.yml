@@ -28,5 +28,8 @@ jobs:
         draft: false
         prerelease: false
         body: This is an automated build of commit ${{ github.ref }}.
+    - name: Package distribution
+      shell: bash
+      run: python setup.py sdist
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
