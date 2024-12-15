@@ -10,7 +10,7 @@ def dns_get_all(qname, qtype, nameservers=None, authority=False):
     resolver = dns.resolver.Resolver()
     if nameservers is not None:
         resolver.nameservers = nameservers
-    response = resolver.query(qname, qtype, raise_on_no_answer=False)
+    response = resolver.resolve(qname, qtype, raise_on_no_answer=False)
     result = []
     section = response.response.answer if not authority else response.response.authority
     for answer in section:
