@@ -106,7 +106,7 @@ class DNSAuthenticator(object):
             return
         reply = dns.message.Message()
         reply.id = msg.id
-        reply.flags = dns.flags.QR
+        reply.flags = dns.flags.QR | dns.flags.AA
         reply.question = msg.question
         record = dns.rrset.from_text(str(question.name), 60, 'IN', 'TXT', self.validation)
         reply.answer.append(record)
