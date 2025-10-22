@@ -36,7 +36,7 @@ challenges (dns-01) for domains managed by any registrar.
 ## Usage
 A new certificate can be requested as follows:
 
-    certbot certonly -a certbot-dns-local:dns-local -d yourdomain.com -d '*.yourdomain.com'
+    certbot certonly -a dns-local -d yourdomain.com -d '*.yourdomain.com'
 
 Renewals will automatically be performed using the same authenticator by certbot.
 
