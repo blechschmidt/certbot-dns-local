@@ -33,6 +33,7 @@ challenges (dns-01) for domains managed by any registrar.
    _acme-challenge.yourdomain.com. 300 IN NS yourdomain.com.
    ```
    Such a record has to be created for each subdomain which you want to obtain a certificate for.
+
 ## Usage
 A new certificate can be requested as follows:
 
@@ -43,6 +44,11 @@ Older versions of `certbot` may require you to use the plugin legacy name as fol
     certbot certonly -a certbot-dns-local:dns-local -d yourdomain.com -d '*.yourdomain.com'
 
 Renewals will automatically be performed using the same authenticator by certbot.
+
+By default, the authenticator will attempt to resolve the challenge domain's nameserver IP addresses and bind sockets to these addresses.
+This is done to prevent listening on `0.0.0.0` or `::`, which may result in collisions with services like `systemd-resolved`. This behavior
+can be overridden by specifying one or multiple bind addresses manually using the `--dns-local-listen <address>` parameter, e.g. in cases
+where `certbot` is running behind NAT.
 
 ## Behind the curtain
 Behind the curtain, the plugin will open a UDP server on port 53 in order to serve the DNS validations. In case binding

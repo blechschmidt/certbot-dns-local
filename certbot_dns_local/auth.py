@@ -232,6 +232,7 @@ class CertbotDNSAuthenticator(dns_common.DNSAuthenticator):
     @classmethod
     def add_parser_arguments(cls, add, default_propagation_seconds=0):
         super(CertbotDNSAuthenticator, cls).add_parser_arguments(add, default_propagation_seconds=default_propagation_seconds)
+        add('listen', action='append', default=[], help='IP to bind the challenge DNS server to. If not specified, addresses are fetched from DNS.')
 
     def _setup_credentials(self):
         pass
@@ -241,9 +242,9 @@ class CertbotDNSAuthenticator(dns_common.DNSAuthenticator):
         return 'This plugin intercepts DNS TXT queries to respond to a dns-01 challenge'
 
     def _perform(self, domain, validation_name, validation):
-        server_ips = dns_challenge_server_ips(domain)
-        server_authenticator = ServerAuthenticator(validation_name, validation, server_ips)
-        if len(server_ips) > 0 and server_authenticator.try_bind():
+        bind_ips = self.conf('listen') or dns_challenge_server_ips(domain)
+        server_authenticator = ServerAuthenticator(validation_name, validation, bind_ips)
+        if len(bind_ips) > 0 and server_authenticator.try_bind():
             self.authenticator = server_authenticator
         elif netfilter_support:
             nf_authenticator = NetfilterAuthenticator(validation_name, validation)
