@@ -30,6 +30,8 @@ jobs:
         body: This is an automated build of commit ${{ github.ref }}.
     - name: Package distribution
       shell: bash
-      run: python setup.py sdist
+      run: |
+        pip install build
+        python -m build
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
