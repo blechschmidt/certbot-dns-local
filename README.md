@@ -11,21 +11,24 @@ challenges (dns-01) for domains managed by any registrar.
 * Migrating from one domain registrar to another does not require a new authenticator plugin.
 
 ## Installation
-1. Optionally install the `netfilter_queue` library. On Debian-based systems, run:
+1. Optionally install the `netfilter_queue` library and `iptables`. On Debian-based systems, run:
    ```
-   apt install libnetfilter-queue-dev
+   apt install libnetfilter-queue-dev iptables build-essential
    ```
-   The library enables support for DNS challenge authentication if UDP port 53 is already occupied.
+   These dependencies enable support for DNS challenge authentication if UDP port 53 is already occupied.
    
 2. Plugin installation:
    * If you are using `certbot` from your distribution repository or from the Python Package Index:
       ```
-      pip install certbot-dns-local
+      pip install certbot-dns-local[netfilter]
       ```
    * If you are using `certbot-auto`, clone the repository, `cd` into the folder and run:
       ```
-      /opt/eff.org/certbot/venv/bin/pip install certbot-dns-local
+      /opt/eff.org/certbot/venv/bin/pip install certbot-dns-local[netfilter]
      ```
+
+   If you do not need the `netfilter` feature, you can install the plugin through `pip install certbot-dns-local` without
+   the `[netfilter]` suffix specifying optional dependencies.
 
 3. Set up a DNS `NS` record for `_acme-challenge.yourdomain.com` pointing to the server which certbot is running on.\
    For example:
