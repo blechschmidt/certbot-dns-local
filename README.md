@@ -53,6 +53,11 @@ This is done to prevent listening on `0.0.0.0` or `::`, which may result in coll
 can be overridden by specifying one or multiple bind addresses manually using the `--dns-local-listen <address>` parameter, e.g. in cases
 where `certbot` is running behind NAT.
 
+## Docker Container
+You can also use the Docker container as follows:
+
+    docker run -it --name certbot-dns-local -v /etc/letsencrypt:/etc/letsencrypt --rm --net=host ghcr.io/blechschmidt/certbot-dns-local:latest certonly -d yourdomain.com -d '*.yourdomain.com'
+
 ## Behind the curtain
 Behind the curtain, the plugin will open a UDP server on port 53 in order to serve the DNS validations. In case binding
 to port 53 fails because it is already occupied by another application, it will fall back to packet interception using the
