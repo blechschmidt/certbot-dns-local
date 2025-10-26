@@ -12,7 +12,7 @@ def command_exists(command):
 
 install_requires = [
     'dnspython',
-    'zope'
+    'zope.interface'
 ]
 
 if (platform == 'linux' or platform == 'linux2') and find_library('netfilter_queue') is not None:
