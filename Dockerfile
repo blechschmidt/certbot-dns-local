@@ -1,20 +1,22 @@
 FROM ubuntu:latest
 
 ARG SOURCE=https://github.com/blechschmidt/certbot-dns-local.git#master
+ARG OPTIONAL_DEPENDENCIES=[netfilter]
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3 \
-    python3-pip \
-    certbot \
     libnetfilter-queue-dev \
-    iptables
+    iptables \
+    curl \
+    build-essential
 
-RUN pip install -U setuptools
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
 
 ADD ${SOURCE} /certbot-dns-local
 
-RUN cd /certbot-dns-local && python3 setup.py install
+WORKDIR /certbot-dns-local
 
-RUN rm -rf /certbot-dns-local
+RUN uv add pip certbot
 
-ENTRYPOINT [ "certbot" ]
+RUN uv run pip install .${OPTIONAL_DEPENDENCIES}
+
+ENTRYPOINT [ "uv", "run", "certbot", "-a", "dns-local" ]
