@@ -3,5 +3,5 @@ Description=Certbot with certbot-dns-local plugin
 Documentation=https://github.com/blechschmidt/certbot-dns-local
 [Service]
 Type=oneshot
-ExecStart=docker run -v /etc/letsencrypt:/etc/letsencrypt --rm --net=host ghcr.io/blechschmidt/certbot-dns-local:v1.0.0 -q renew
+ExecStart=docker run -v /etc/letsencrypt:/etc/letsencrypt --rm --net=host ghcr.io/blechschmidt/certbot-dns-local:v1.0.0@sha256:7954bd74f395b2554cb3e52b280644038bf4a3374362285d5799fac2f42849c5 -q renew
 PrivateTmp=true
