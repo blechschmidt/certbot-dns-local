@@ -58,6 +58,9 @@ You can also use the Docker container as follows:
 
     docker run -it --name certbot-dns-local -v /etc/letsencrypt:/etc/letsencrypt --rm --net=host ghcr.io/blechschmidt/certbot-dns-local:latest certonly -d yourdomain.com -d '*.yourdomain.com'
 
+Note that with the use of the Docker Container method, you will still need to automate certificate renewal. Therefore, this repository contains an `extra` folder
+with `systemd` units taking over this job.
+
 ## Behind the curtain
 Behind the curtain, the plugin will open a UDP server on port 53 in order to serve the DNS validations. In case binding
 to port 53 fails because it is already occupied by another application, it will fall back to packet interception using the
