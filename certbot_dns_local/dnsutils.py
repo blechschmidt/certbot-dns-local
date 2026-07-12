@@ -20,6 +20,17 @@ def dns_get_all(qname, qtype, nameservers=None, authority=False):
     return result
 
 
+def dns_get_rrsets(qname, qtype, nameservers=None, lifetime=3.0):
+    if not qname.endswith('.'):
+        qname += '.'
+    resolver = dns.resolver.Resolver()
+    resolver.lifetime = lifetime
+    if nameservers is not None:
+        resolver.nameservers = nameservers
+    response = resolver.resolve(qname, qtype, raise_on_no_answer=False)
+    return list(response.response.answer)
+
+
 def dns_resolve_ips(names, nameservers=None):
     result = []
     for name in names:
@@ -39,19 +50,23 @@ def nameserver_ips(domain):
     return dns_resolve_ips(nameservers)
 
 
-def dns_challenge_server_ips(domain):
-    ns_ips = None
+def authoritative_nameserver_ips(domain):
     ns_domain = domain
 
-    # Obtain the NS IP addresses for the start of authority of the challenge domain by moving up one label at a time.
+    # Obtain the NS IP addresses for the start of authority of the domain by moving up one label at a time.
     while len(ns_domain) != 0 and ns_domain != '.':
         try:
             ns_ips = nameserver_ips(ns_domain)
             if len(ns_ips) != 0:
-                break
+                return ns_ips
         except dns.resolver.NXDOMAIN:
             pass
         ns_domain = '.'.join(ns_domain.split('.')[1:])  # Drop the first label
+    return []
+
+
+def dns_challenge_server_ips(domain):
+    ns_ips = authoritative_nameserver_ips(domain) or None
 
     try:
         # These IP addresses are then used in order to find the NS record for the _acme-challenge subdomain.

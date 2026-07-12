@@ -14,7 +14,7 @@ from certbot import interfaces
 from certbot.plugins import dns_common
 from dns.exception import DNSException
 
-from .dnsutils import dns_challenge_server_ips
+from .dnsutils import dns_challenge_server_ips, authoritative_nameserver_ips, dns_get_rrsets
 
 netfilter_support = True
 try:
@@ -84,6 +84,17 @@ class ProcolAgnosticNfqueue(object):
             self._modify_rule(True)
 
 
+def is_local_address(ip):
+    s = socket.socket(socket.AF_INET6 if ':' in ip else socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.bind((ip, 0))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
 class DNSAuthenticator(object):
     def __init__(self, validation_name, validation):
         self.validation_name = validation_name
@@ -91,7 +102,17 @@ class DNSAuthenticator(object):
         if not self.validation_name.endswith('.'):
             self.validation_name += '.'
         self.children = []
+        self.parent_ns_ips = self._get_parent_ns_ips()
         atexit.register(self.cleanup)
+
+    def _get_parent_ns_ips(self):
+        # Nameservers of the zone containing the delegation, used to serve other records within the
+        # _acme-challenge subdomain. Addresses of this machine are excluded to prevent query loops.
+        parent_domain = self.validation_name.split('.', 1)[1]
+        try:
+            return [ip for ip in authoritative_nameserver_ips(parent_domain) if not is_local_address(ip)]
+        except DNSException:
+            return []
 
     def reply_from_data(self, data):
         try:
@@ -101,15 +122,28 @@ class DNSAuthenticator(object):
         if len(msg.question) != 1:
             return
         question = msg.question[0]
-        if str(question.name).lower() != self.validation_name.lower() or question.rdtype != dns.rdatatype.TXT \
-                or question.rdclass != dns.rdataclass.IN:
+        if question.rdclass != dns.rdataclass.IN:
+            return
+        qname = str(question.name).lower()
+        validation_name = self.validation_name.lower()
+        if qname != validation_name and not qname.endswith('.' + validation_name):
             return
         reply = dns.message.Message()
         reply.id = msg.id
         reply.flags = dns.flags.QR | dns.flags.AA
         reply.question = msg.question
-        record = dns.rrset.from_text(str(question.name), 60, 'IN', 'TXT', self.validation)
-        reply.answer.append(record)
+        if qname == validation_name and question.rdtype == dns.rdatatype.TXT:
+            record = dns.rrset.from_text(str(question.name), 60, 'IN', 'TXT', self.validation)
+            reply.answer.append(record)
+        elif len(self.parent_ns_ips) > 0:
+            try:
+                reply.answer.extend(dns_get_rrsets(qname, question.rdtype, self.parent_ns_ips))
+            except dns.resolver.NXDOMAIN:
+                reply.set_rcode(dns.rcode.NXDOMAIN)
+            except DNSException:
+                return
+        else:
+            return
         return reply.to_wire()
 
     def cleanup(self):
