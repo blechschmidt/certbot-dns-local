@@ -39,3 +39,10 @@ netfilter = [
 
 [project.entry-points."certbot.plugins"]
 "dns-local" = "certbot_dns_local.auth:CertbotDNSAuthenticator"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["certbot_dns_local"]
