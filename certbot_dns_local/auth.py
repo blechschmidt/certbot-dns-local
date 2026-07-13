@@ -22,6 +22,9 @@ try:
     from netfilterqueue import NetfilterQueue
     from scapy.layers.inet import UDP, IP
     from scapy.layers.inet6 import IPv6
+
+    from . import iptc_compat
+    iptc_compat.patch()
 except ImportError:
     netfilter_support = False
 
