@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 NETFILTER_MAX_QUEUES = 64
 
+# Signals for which certbot or Python install handlers that raise exceptions instead of terminating the process.
+CHILD_DEFAULT_SIGNALS = [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT, signal.SIGXCPU,
+                         signal.SIGXFSZ]
+
 
 class ProcolAgnosticNfqueue(object):
     def __init__(self, version):
@@ -98,24 +102,55 @@ def is_local_address(ip):
         s.close()
 
 
+def normalize_name(name):
+    name = name.lower()
+    if not name.endswith('.'):
+        name += '.'
+    return name
+
+
+def fork_child(target):
+    """Run target in a child process and return its PID to the parent. The child never returns from this call."""
+    pid = os.fork()
+    if pid != 0:
+        return pid
+    status = 1
+    try:
+        # The child inherits certbot's signal handlers, which turn signals into exceptions. Being killed by the
+        # parent would then resume certbot's control flow, e.g. the renewal loop, within the child.
+        for signum in CHILD_DEFAULT_SIGNALS:
+            signal.signal(signum, signal.SIG_DFL)
+        target()
+        status = 0
+    except BaseException:
+        logger.exception('Challenge server process failed')
+    finally:
+        os._exit(status)  # Exit without calling cleanup handlers etc.
+
+
 class DNSAuthenticator(object):
-    def __init__(self, validation_name, validation):
-        self.validation_name = validation_name
-        self.validation = validation
-        if not self.validation_name.endswith('.'):
-            self.validation_name += '.'
+    def __init__(self, records):
+        # Maps each normalized validation name to the list of validations served for it. A name can have multiple
+        # validations, e.g. when a certificate covers both a domain and its wildcard.
+        self.records = records
         self.children = []
-        self.parent_ns_ips = self._get_parent_ns_ips()
+        self.parent_ns_ips = dict((name, self._get_parent_ns_ips(name)) for name in records)
         atexit.register(self.cleanup)
 
-    def _get_parent_ns_ips(self):
+    @staticmethod
+    def _get_parent_ns_ips(validation_name):
         # Nameservers of the zone containing the delegation, used to serve other records within the
         # _acme-challenge subdomain. Addresses of this machine are excluded to prevent query loops.
-        parent_domain = self.validation_name.split('.', 1)[1]
+        parent_domain = validation_name.split('.', 1)[1]
         try:
             return [ip for ip in authoritative_nameserver_ips(parent_domain) if not is_local_address(ip)]
         except DNSException:
             return []
+
+    def _find_validation_name(self, qname):
+        # The most specific validation name which is equal to or a parent of qname.
+        matches = [name for name in self.records if qname == name or qname.endswith('.' + name)]
+        return max(matches, key=len) if matches else None
 
     def reply_from_data(self, data):
         try:
@@ -128,19 +163,22 @@ class DNSAuthenticator(object):
         if question.rdclass != dns.rdataclass.IN:
             return
         qname = str(question.name).lower()
-        validation_name = self.validation_name.lower()
-        if qname != validation_name and not qname.endswith('.' + validation_name):
+        validation_name = self._find_validation_name(qname)
+        if validation_name is None:
             return
+        parent_ns_ips = self.parent_ns_ips[validation_name]
         reply = dns.message.Message()
         reply.id = msg.id
         reply.flags = dns.flags.QR | dns.flags.AA
         reply.question = msg.question
         if qname == validation_name and question.rdtype == dns.rdatatype.TXT:
-            record = dns.rrset.from_text(str(question.name), 60, 'IN', 'TXT', self.validation)
+            # Validations change with every attempt. A TTL of zero prevents the resolvers of the CA from serving
+            # those of a previous attempt from their cache.
+            record = dns.rrset.from_text(str(question.name), 0, 'IN', 'TXT', *self.records[validation_name])
             reply.answer.append(record)
-        elif len(self.parent_ns_ips) > 0:
+        elif len(parent_ns_ips) > 0:
             try:
-                reply.answer.extend(dns_get_rrsets(qname, question.rdtype, self.parent_ns_ips))
+                reply.answer.extend(dns_get_rrsets(qname, question.rdtype, parent_ns_ips))
             except dns.resolver.NXDOMAIN:
                 reply.set_rcode(dns.rcode.NXDOMAIN)
             except DNSException:
@@ -152,12 +190,14 @@ class DNSAuthenticator(object):
     def cleanup(self):
         for child in self.children:
             os.kill(child, signal.SIGTERM)
+            # Reap the child, so that the sockets it holds are released before the next certificate is processed.
+            os.waitpid(child, 0)
         self.children = []
 
 
 class NetfilterAuthenticator(DNSAuthenticator):
-    def __init__(self, validation_name, validation):
-        super(NetfilterAuthenticator, self).__init__(validation_name, validation)
+    def __init__(self, records):
+        super(NetfilterAuthenticator, self).__init__(records)
         self.nfqueue4 = ProcolAgnosticNfqueue(4)
         self.nfqueue6 = ProcolAgnosticNfqueue(6)
 
@@ -186,11 +226,7 @@ class NetfilterAuthenticator(DNSAuthenticator):
     def authenticate_netfilter(self, nfqueue, handler):
         nfqueue.bind(handler)
         nfqueue.insert_rule()
-        pid = os.fork()
-        if pid == 0:
-            nfqueue.run()
-            os._exit(0)  # Exit without calling cleanup handlers etc.
-        self.children.append(pid)
+        self.children.append(fork_child(nfqueue.run))
 
     def authenticate(self):
         self.authenticate_netfilter(self.nfqueue4, self._handle_packet4)
@@ -219,8 +255,8 @@ class NetfilterAuthenticator(DNSAuthenticator):
 
 
 class ServerAuthenticator(DNSAuthenticator):
-    def __init__(self, validation_name, validation, ips):
-        super(ServerAuthenticator, self).__init__(validation_name, validation)
+    def __init__(self, records, ips):
+        super(ServerAuthenticator, self).__init__(records)
         self.ips = ips
         self.sockets = []
 
@@ -235,18 +271,17 @@ class ServerAuthenticator(DNSAuthenticator):
                 return False
         return True
 
+    def _serve(self):
+        while True:
+            read, _, _ = select.select(self.sockets, [], [])
+            for s in read:
+                data, addr = s.recvfrom(0xFFFF)
+                reply = self.reply_from_data(data)
+                if reply is not None:
+                    s.sendto(reply, addr)
+
     def authenticate(self):
-        pid = os.fork()
-        if pid == 0:
-            while True:
-                read, _, _ = select.select(self.sockets, [], [])
-                for s in read:
-                    data, addr = s.recvfrom(0xFFFF)
-                    reply = self.reply_from_data(data)
-                    if reply is not None:
-                        s.sendto(reply, addr)
-        else:
-            self.children.append(pid)
+        self.children.append(fork_child(self._serve))
 
     def cleanup(self):
         super(ServerAuthenticator, self).cleanup()
@@ -265,6 +300,8 @@ class CertbotDNSAuthenticator(dns_common.DNSAuthenticator):
         super(CertbotDNSAuthenticator, self).__init__(*args, **kwargs)
         self.credentials = None
         self.authenticator = None
+        self.records = {}
+        self.bind_ips = []
 
     @classmethod
     def add_parser_arguments(cls, add, default_propagation_seconds=0):
@@ -278,20 +315,36 @@ class CertbotDNSAuthenticator(dns_common.DNSAuthenticator):
     def more_info():
         return 'This plugin intercepts DNS TXT queries to respond to a dns-01 challenge'
 
+    def perform(self, achalls):
+        # The base implementation calls _perform for each challenge, which only collects the records. A single
+        # authenticator serving all of them is started afterwards, because a name may have to be served with
+        # multiple validations at once, e.g. when a certificate covers both a domain and its wildcard.
+        self.records = {}
+        self.bind_ips = []
+        responses = super(CertbotDNSAuthenticator, self).perform(achalls)
+        self._start_authenticator()
+        return responses
+
     def _perform(self, domain, validation_name, validation):
-        bind_ips = self.conf('listen') or dns_challenge_server_ips(domain)
-        server_authenticator = ServerAuthenticator(validation_name, validation, bind_ips)
-        if len(bind_ips) > 0 and server_authenticator.try_bind():
+        self.records.setdefault(normalize_name(validation_name), []).append(validation)
+        for ip in self.conf('listen') or dns_challenge_server_ips(domain):
+            if ip not in self.bind_ips:
+                self.bind_ips.append(ip)
+
+    def _start_authenticator(self):
+        server_authenticator = ServerAuthenticator(self.records, self.bind_ips)
+        if len(self.bind_ips) > 0 and server_authenticator.try_bind():
             self.authenticator = server_authenticator
         elif netfilter_support:
-            nf_authenticator = NetfilterAuthenticator(validation_name, validation)
-            self.authenticator = nf_authenticator
+            self.authenticator = NetfilterAuthenticator(self.records)
 
         if self.authenticator is None:
             return
         self.authenticator.authenticate()
 
     def _cleanup(self, domain, validation_name, validation):
+        # Called for each challenge, while a single authenticator serves all of them.
         if self.authenticator is None:
             return
         self.authenticator.cleanup()
+        self.authenticator = None
